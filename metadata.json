@@ -1,6 +1,8 @@
 {
-  "name": "BellaGest - Gestão para Estúdio de Estética",
+  "name": "Lume App - Gestão para Estúdio de Estética",
   "description": "Sistema de gestão elegante e intuitivo para estúdios de estética facial, agendamentos, clientes, financeiro, produtos e serviços.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

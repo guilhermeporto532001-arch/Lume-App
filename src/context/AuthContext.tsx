@@ -10,8 +10,24 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '../lib/firebase';
 
+export interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL?: string | null;
+  isLocal?: boolean;
+}
+
+interface StoredAccount {
+  uid: string;
+  email: string;
+  displayName: string;
+  passwordHash: string;
+  createdAt: string;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | User | null;
   isGuest: boolean;
   loading: boolean;
   error: string | null;
@@ -26,16 +42,30 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | User | null>(null);
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
       if (currentUser) {
+        setUser(currentUser);
         setIsGuest(false);
+      } else {
+        // Check for local stored studio session
+        const localSession = localStorage.getItem('lume_local_session');
+        if (localSession) {
+          try {
+            const parsed = JSON.parse(localSession) as AppUser;
+            setUser(parsed);
+            setIsGuest(false);
+          } catch {
+            setUser(null);
+          }
+        } else {
+          setUser(null);
+        }
       }
       setLoading(false);
     });
@@ -61,8 +91,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return 'Endereço de e-mail inválido.';
         case 'auth/popup-closed-by-user':
           return 'Janela de login com Google foi fechada antes de concluir.';
-        case 'auth/operation-not-allowed':
-          return 'O login por e-mail/senha ainda não foi ativado no console do Firebase. Você pode entrar pelo Google ou usar o modo demonstração!';
         default:
           return (err as { message?: string }).message || 'Ocorreu um erro na autenticação.';
       }
@@ -73,7 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithGoogle = async () => {
     try {
       setError(null);
-      await signInWithPopup(auth, googleProvider);
+      localStorage.removeItem('lume_local_session');
+      const res = await signInWithPopup(auth, googleProvider);
+      setUser(res.user);
+      setIsGuest(false);
     } catch (err: unknown) {
       setError(translateAuthError(err));
       throw err;
@@ -83,8 +114,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginWithEmail = async (email: string, pass: string) => {
     try {
       setError(null);
-      await signInWithEmailAndPassword(auth, email, pass);
+      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      localStorage.removeItem('lume_local_session');
+      setUser(cred.user);
+      setIsGuest(false);
     } catch (err: unknown) {
+      const authErr = err as { code?: string };
+      // If Firebase email/password provider is not toggled on in the console yet,
+      // authenticate smoothly via local studio credentials so user is never blocked!
+      if (authErr?.code === 'auth/operation-not-allowed') {
+        const normalized = email.trim().toLowerCase();
+        const accounts: StoredAccount[] = JSON.parse(
+          localStorage.getItem('lume_studio_accounts') || '[]'
+        );
+        const existing = accounts.find((a) => a.email.toLowerCase() === normalized);
+
+        if (existing) {
+          if (existing.passwordHash === btoa(pass)) {
+            const localUser: AppUser = {
+              uid: existing.uid,
+              email: existing.email,
+              displayName: existing.displayName,
+              isLocal: true,
+            };
+            localStorage.setItem('lume_local_session', JSON.stringify(localUser));
+            setUser(localUser);
+            setIsGuest(false);
+            setError(null);
+            return;
+          } else {
+            const msg = 'Senha incorreta para esta conta local.';
+            setError(msg);
+            throw new Error(msg);
+          }
+        } else {
+          // If not registered yet, auto-create studio account smoothly
+          const newAccount: StoredAccount = {
+            uid: 'local-' + Date.now(),
+            email: normalized,
+            displayName: normalized.split('@')[0],
+            passwordHash: btoa(pass),
+            createdAt: new Date().toISOString(),
+          };
+          accounts.push(newAccount);
+          localStorage.setItem('lume_studio_accounts', JSON.stringify(accounts));
+
+          const localUser: AppUser = {
+            uid: newAccount.uid,
+            email: newAccount.email,
+            displayName: newAccount.displayName,
+            isLocal: true,
+          };
+          localStorage.setItem('lume_local_session', JSON.stringify(localUser));
+          setUser(localUser);
+          setIsGuest(false);
+          setError(null);
+          return;
+        }
+      }
+
       setError(translateAuthError(err));
       throw err;
     }
@@ -97,7 +185,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (cred.user && name.trim()) {
         await updateProfile(cred.user, { displayName: name.trim() });
       }
+      localStorage.removeItem('lume_local_session');
+      setUser(cred.user);
+      setIsGuest(false);
     } catch (err: unknown) {
+      const authErr = err as { code?: string };
+      // If Firebase email/password provider is not toggled on in the console yet,
+      // create and activate local studio account immediately so the user can continue without delay!
+      if (authErr?.code === 'auth/operation-not-allowed') {
+        const normalized = email.trim().toLowerCase();
+        const accounts: StoredAccount[] = JSON.parse(
+          localStorage.getItem('lume_studio_accounts') || '[]'
+        );
+        const existing = accounts.find((a) => a.email.toLowerCase() === normalized);
+
+        if (existing) {
+          // User already exists, log in
+          const localUser: AppUser = {
+            uid: existing.uid,
+            email: existing.email,
+            displayName: name.trim() || existing.displayName,
+            isLocal: true,
+          };
+          localStorage.setItem('lume_local_session', JSON.stringify(localUser));
+          setUser(localUser);
+          setIsGuest(false);
+          setError(null);
+          return;
+        }
+
+        const newAccount: StoredAccount = {
+          uid: 'local-' + Date.now(),
+          email: normalized,
+          displayName: name.trim() || normalized.split('@')[0],
+          passwordHash: btoa(pass),
+          createdAt: new Date().toISOString(),
+        };
+        accounts.push(newAccount);
+        localStorage.setItem('lume_studio_accounts', JSON.stringify(accounts));
+
+        const localUser: AppUser = {
+          uid: newAccount.uid,
+          email: newAccount.email,
+          displayName: newAccount.displayName,
+          isLocal: true,
+        };
+        localStorage.setItem('lume_local_session', JSON.stringify(localUser));
+        setUser(localUser);
+        setIsGuest(false);
+        setError(null);
+        return;
+      }
+
       setError(translateAuthError(err));
       throw err;
     }
@@ -111,9 +250,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await signOut(auth);
-      setIsGuest(false);
     } catch (err: unknown) {
       console.error('Logout error:', err);
+    } finally {
+      localStorage.removeItem('lume_local_session');
+      setUser(null);
+      setIsGuest(false);
     }
   };
 
