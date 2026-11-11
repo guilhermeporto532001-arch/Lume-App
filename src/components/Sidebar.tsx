@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { TabType } from '../types';
 import { useAuth } from '../context/AuthContext';
-import avatarImg from '../assets/images/avatar_esthetician_1794335612243.jpg';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -166,20 +165,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Bottom Profile / Auth Card */}
         <div className="p-3 border-t border-[#F4EBE6] bg-[#FCF9F7]">
           {user ? (
-            <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-[#EFE5E0] shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <img
-                  src={user.photoURL || avatarImg}
-                  alt="Avatar"
-                  referrerPolicy="no-referrer"
-                  className="w-9 h-9 rounded-full object-cover border border-[#F3DFE2] shrink-0"
-                />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-[#423533] truncate">
-                    {user.displayName || 'Esteticista'}
-                  </p>
-                  <p className="text-[11px] text-[#9B8983] truncate">{user.email}</p>
-                </div>
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-[#EFE5E0] shadow-2xs">
+              <div className="min-w-0 pr-2">
+                <p className="text-xs font-semibold text-[#423533] truncate">
+                  {user.displayName || 'Esteticista'}
+                </p>
+                <p className="text-[11px] text-[#9B8983] truncate">{user.email}</p>
               </div>
               <button
                 onClick={logout}
@@ -191,18 +182,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ) : (
             <div className="p-2.5 rounded-xl bg-white border border-[#EFE5E0] space-y-2">
-              <div className="flex items-center gap-2">
-                <img
-                  src={avatarImg}
-                  alt="Helena"
-                  referrerPolicy="no-referrer"
-                  className="w-8 h-8 rounded-full object-cover border border-[#F3DFE2] shrink-0"
-                />
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-[#423533] truncate">
-                    {isGuest ? 'Modo Demonstração' : 'Não conectado'}
-                  </p>
-                </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-[#423533] truncate">
+                  {isGuest ? 'Modo Demonstração' : 'Não conectado'}
+                </p>
               </div>
               <button
                 onClick={onOpenAuth}
