@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil da esteticista ou administradora do estúdio",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 120 },
+        "clinicName": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["uid", "email"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "Ficha da cliente com dados de contato e estética facial",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 256 },
+        "skinType": { "type": "string", "maxLength": 50 },
+        "allergies": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "name"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Agendamento de procedimento estético",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128 },
+        "clientName": { "type": "string", "maxLength": 120 },
+        "serviceName": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 20 },
+        "time": { "type": "string", "maxLength": 10 },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["agendado", "confirmado", "concluido", "cancelado"] },
+        "notes": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "clientName", "serviceName", "date", "time", "status"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Serviço ou protocolo de estética oferecido",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 60 },
+        "durationMinutes": { "type": "number" },
+        "price": { "type": "number" },
+        "description": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["userId", "name", "price", "durationMinutes"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Produto cosmético ou insumo de cabine / home care",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "category": { "type": "string", "maxLength": 60 },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "price": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["userId", "name", "stock", "price"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Movimentação financeira de receita ou despesa",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "description": { "type": "string", "maxLength": 200 },
+        "type": { "type": "string", "enum": ["receita", "despesa"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "maxLength": 20 },
+        "category": { "type": "string", "maxLength": 60 },
+        "paymentMethod": { "type": "string", "maxLength": 40 }
+      },
+      "required": ["userId", "description", "type", "amount", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Coleção de perfis de usuário"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Fichas de clientes cadastradas"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Agendamentos da clínica"
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Catálogo de procedimentos e protocolos"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Estoque de produtos de cabine e home care"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Lançamentos de fluxo de caixa da clínica"
+    }
+  }
+}

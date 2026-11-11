@@ -1,0 +1,428 @@
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  Send,
+  Copy,
+  Check,
+  MessageCircle,
+  Phone,
+  Sparkles,
+  FileText,
+  AlertCircle,
+  Edit3,
+  Image as ImageIcon,
+  Download,
+  Share2,
+  UploadCloud,
+  Trash2,
+} from 'lucide-react';
+import { Appointment, Client, ServiceItem } from '../types';
+
+interface PostCareWhatsAppModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  appointment: Appointment | null;
+  client?: Client;
+  service?: ServiceItem;
+  onUpdateClientPhone?: (clientId: string, phone: string) => void;
+  onUpdateServicePostCare?: (serviceId: string, postCare: string, imageUrl?: string) => void;
+}
+
+const DEFAULT_POST_CARE = `• Evite exposição solar direta nas próximas 48 horas.
+• Aplique protetor solar FPS 50+ a cada 3 horas, mesmo em ambientes fechados.
+• Lave o rosto delicadamente com água morna/fria e sabonete neutro indicado.
+• Mantenha a pele hidratada com água termal ou hidratante calmante.
+• Evite maquiagem pesada e exercícios físicos intensos no dia de hoje.
+• Não cutuque, puxe pelinhas ou esprema a região tratada.`;
+
+export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
+  isOpen,
+  onClose,
+  appointment,
+  client,
+  service,
+  onUpdateClientPhone,
+  onUpdateServicePostCare,
+}) => {
+  const [phone, setPhone] = useState('');
+  const [postCareText, setPostCareText] = useState('');
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [copiedText, setCopiedText] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
+  const [savedAsDefault, setSavedAsDefault] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (appointment) {
+      // 1. Determine phone
+      const initialPhone = client?.phone || '';
+      setPhone(initialPhone);
+
+      // 2. Determine post care text from service or default
+      const instructions = service?.postCareInstructions?.trim() || DEFAULT_POST_CARE;
+      setPostCareText(instructions);
+
+      // 3. Determine image from service
+      setImageUrl(service?.postCareImageUrl || null);
+
+      setSavedAsDefault(false);
+      setCopiedText(false);
+      setCopiedImage(false);
+      setIsEditing(false);
+    }
+  }, [appointment, client, service]);
+
+  if (!isOpen || !appointment) return null;
+
+  const clientFirstName = appointment.clientName.trim().split(' ')[0] || 'Cliente';
+  const serviceName = appointment.serviceName;
+
+  // Format the full message that will be sent via WhatsApp
+  const fullMessage = `Olá, ${clientFirstName}! ✨
+Aqui é da *Lume - Estética Facial*. Foi um prazer imenso cuidar de você hoje! 🌸
+
+Para garantir a máxima eficácia e luminosidade do seu procedimento (*${serviceName}*), preparamos suas orientações de cuidados pós-atendimento:
+
+📋 *CUIDADOS PÓS-PROCEDIMENTO:*
+${postCareText}
+
+✨ Lembre-se: o resultado perfeito depende 50% da cabine e 50% dos seus cuidados home care!
+
+Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenha um dia iluminado! 💖`;
+
+  // Clean phone number for WhatsApp link (keeping international code)
+  const getCleanPhone = (rawPhone: string) => {
+    const digits = rawPhone.replace(/\D/g, '');
+    if (!digits) return '';
+    // If 10 or 11 digits (Brazilian DDD + phone), prepend 55
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+    return digits;
+  };
+
+  const handleImageFileChange = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione uma imagem válida (PNG, JPG, WEBP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImageUrl(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSendWhatsApp = () => {
+    const cleanPhone = getCleanPhone(phone);
+    if (!cleanPhone) {
+      alert('Por favor, informe um número de telefone com DDD para enviar no WhatsApp.');
+      return;
+    }
+
+    // Save phone to client profile if client has an id and phone changed
+    if (client?.id && phone.trim() && phone.trim() !== client.phone && onUpdateClientPhone) {
+      onUpdateClientPhone(client.id, phone.trim());
+    }
+
+    const encodedText = encodeURIComponent(fullMessage);
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handleCopyText = () => {
+    navigator.clipboard.writeText(fullMessage);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2500);
+  };
+
+  const handleDownloadImage = () => {
+    if (!imageUrl) return;
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `panfleto_pos_${serviceName.toLowerCase().replace(/\s+/g, '_')}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyImage = async () => {
+    if (!imageUrl) return;
+    try {
+      // Convert data URL to Blob
+      const res = await fetch(imageUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [blob.type]: blob,
+        }),
+      ]);
+      setCopiedImage(true);
+      setTimeout(() => setCopiedImage(false), 2500);
+    } catch {
+      // If direct image copy fails, fallback to download
+      handleDownloadImage();
+    }
+  };
+
+  const handleSaveAsDefault = () => {
+    if (service?.id && onUpdateServicePostCare && postCareText.trim()) {
+      onUpdateServicePostCare(service.id, postCareText.trim(), imageUrl || undefined);
+      setSavedAsDefault(true);
+      setTimeout(() => setSavedAsDefault(false), 3000);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs">
+      <div className="relative w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-[#EFE5E0] overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-[#FDF5F3] via-[#FAF2EE] to-white border-b border-[#F4EBE6] shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 shadow-xs">
+              <MessageCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-[#423533]">Enviar Pós-Procedimento</h3>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  WhatsApp Oficial
+                </span>
+              </div>
+              <p className="text-xs text-[#8C7B76]">
+                {appointment.clientName} · {appointment.serviceName}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-6 space-y-4 overflow-y-auto">
+          {/* Client WhatsApp Phone input */}
+          <div className="p-3.5 rounded-2xl bg-[#FAF5F2] border border-[#EFE5E0] space-y-2">
+            <label className="block text-xs font-semibold text-[#544643] flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#9E4B52]" />
+                WhatsApp da Cliente
+              </span>
+              {client ? (
+                <span className="text-[10px] text-emerald-700 font-medium">
+                  {client.phone ? '✓ Telefone vinculado à ficha' : '⚠️ Telefone pendente na ficha'}
+                </span>
+              ) : (
+                <span className="text-[10px] text-stone-500">Cliente avulsa</span>
+              )}
+            </label>
+            <input
+              type="text"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Ex: (11) 98765-4321 ou 11987654321"
+              className="w-full px-3 py-2 text-sm rounded-xl border border-[#E4D7D2] focus:border-[#9E4B52] focus:ring-1 focus:ring-[#9E4B52] outline-hidden text-[#423533] bg-white font-medium"
+            />
+          </div>
+
+          {/* Procedure & Post-care Instructions info */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-[#423533]">
+                <FileText className="w-4 h-4 text-[#9E4B52]" />
+                <span>Panfleto Digital de Cuidados ({appointment.serviceName})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="text-xs font-semibold text-[#9E4B52] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>{isEditing ? 'Visualizar Mensagem' : 'Editar Conteúdo'}</span>
+                </button>
+              </div>
+            </div>
+
+            {isEditing ? (
+              <div className="space-y-3">
+                <textarea
+                  rows={5}
+                  value={postCareText}
+                  onChange={(e) => setPostCareText(e.target.value)}
+                  placeholder="Orientações e cuidados pós-procedimento..."
+                  className="w-full p-3 text-xs rounded-2xl border border-[#E4D7D2] focus:border-[#9E4B52] outline-hidden text-[#423533] bg-white leading-relaxed font-sans"
+                />
+
+                {/* Edit image attached */}
+                <div className="p-3 rounded-2xl bg-[#FAF5F2] border border-[#EFE5E0] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[#544643] flex items-center gap-1.5">
+                      <ImageIcon className="w-3.5 h-3.5 text-[#9E4B52]" />
+                      Imagem / Panfleto Anexado
+                    </span>
+                    {imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setImageUrl(null)}
+                        className="text-[11px] text-rose-600 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Remover imagem
+                      </button>
+                    )}
+                  </div>
+
+                  {imageUrl ? (
+                    <div className="relative rounded-xl overflow-hidden border border-[#EFE5E0] bg-white max-h-44 flex items-center justify-center p-2 group">
+                      <img
+                        src={imageUrl}
+                        alt="Panfleto Pós-Procedimento"
+                        className="max-h-40 object-contain rounded-lg shadow-2xs"
+                      />
+                      <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
+                        <span className="px-3 py-1.5 bg-white text-[#423533] text-xs font-semibold rounded-xl shadow-xs">
+                          Trocar Imagem
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(e) => e.target.files?.[0] && handleImageFileChange(e.target.files[0])}
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-[#E4D7D2] hover:border-[#9E4B52] bg-white hover:bg-stone-50 transition-colors cursor-pointer text-xs text-[#7E6963]">
+                      <UploadCloud className="w-4 h-4 text-[#9E4B52]" />
+                      <span>Clique para anexar panfleto ou imagem deste pós-atendimento</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(e) => e.target.files?.[0] && handleImageFileChange(e.target.files[0])}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {service && (
+                  <button
+                    type="button"
+                    onClick={handleSaveAsDefault}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+                  >
+                    {savedAsDefault ? <Check className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span>{savedAsDefault ? 'Salvo como padrão do procedimento!' : 'Salvar como padrão deste procedimento (Texto + Imagem)'}</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* WhatsApp Preview Bubble */
+              <div className="p-4 rounded-2xl bg-[#EFEAE2] border border-[#E0D8CE] shadow-inner space-y-2 text-xs text-[#111B21]">
+                <div className="flex items-center justify-between text-[11px] text-[#54656F] border-b border-[#E0D8CE] pb-1.5 mb-1.5">
+                  <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Prévia da Mensagem no WhatsApp
+                  </span>
+                  <span>Lume · Estética Facial</span>
+                </div>
+
+                {/* WhatsApp Chat Card */}
+                <div className="bg-white rounded-2xl rounded-tl-xs shadow-xs overflow-hidden border border-black/5">
+                  {/* Attached Image if present */}
+                  {imageUrl && (
+                    <div className="relative bg-[#FAF5F2] border-b border-[#F4EBE6] p-2 flex items-center justify-center group">
+                      <img
+                        src={imageUrl}
+                        alt="Panfleto Anexado"
+                        className="max-h-52 w-auto object-contain rounded-xl shadow-2xs"
+                      />
+                      <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleCopyImage}
+                          title="Copiar imagem para colar no WhatsApp (Ctrl+V)"
+                          className="flex items-center gap-1 px-2.5 py-1 bg-white/90 hover:bg-white text-[#423533] text-[10px] font-bold rounded-lg shadow-xs backdrop-blur-xs transition-colors cursor-pointer"
+                        >
+                          {copiedImage ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedImage ? 'Copiada!' : 'Copiar Imagem'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadImage}
+                          title="Baixar imagem no computador/celular"
+                          className="p-1 bg-white/90 hover:bg-white text-[#423533] rounded-lg shadow-xs backdrop-blur-xs transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Text body */}
+                  <div className="p-3.5 whitespace-pre-wrap leading-relaxed text-[#20272B] font-sans">
+                    {fullMessage}
+                  </div>
+                </div>
+
+                {imageUrl && (
+                  <p className="text-[11px] text-stone-600 mt-1 flex items-center gap-1 font-medium">
+                    <span>💡 <strong>Dica:</strong> O texto abre preenchido no WhatsApp. A imagem pode ser colada com <code>Ctrl+V</code> ou enviada com 1 clique!</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-[#FCF9F7] border-t border-[#F4EBE6] shrink-0">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleCopyText}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#675753] hover:text-[#423533] bg-white hover:bg-stone-100 rounded-xl border border-[#EFE5E0] transition-colors cursor-pointer"
+            >
+              {copiedText ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              <span>{copiedText ? 'Texto Copiado!' : 'Copiar Texto'}</span>
+            </button>
+
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={handleCopyImage}
+                title="Copiar imagem para colar no WhatsApp"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+              >
+                {copiedImage ? <Check className="w-4 h-4 text-emerald-600" /> : <ImageIcon className="w-4 h-4" />}
+                <span>{copiedImage ? 'Imagem Copiada!' : 'Copiar Foto'}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="w-full sm:w-auto flex items-center gap-2 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-semibold text-[#7E6963] hover:text-[#423533] cursor-pointer"
+            >
+              Fechar
+            </button>
+            <button
+              type="button"
+              onClick={handleSendWhatsApp}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#20BD5A] text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+            >
+              <Send className="w-4 h-4" />
+              <span>Enviar no WhatsApp</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
