@@ -19,6 +19,7 @@ import {
   persistProductStock,
   persistTransaction,
   removeTransaction,
+  removeClient,
 } from './services/dataService';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
@@ -137,6 +138,31 @@ function MainApp() {
   const handleAddClient = (newClient: Client) => {
     setClients((prev) => [newClient, ...prev]);
     persistClient(newClient, user?.uid);
+  };
+
+  const handleUpdateClient = (updatedClient: Client) => {
+    setClients((prev) =>
+      prev.map((c) => (c.id === updatedClient.id ? updatedClient : c))
+    );
+    persistClient(updatedClient, user?.uid);
+  };
+
+  const handleDeleteClient = (clientId: string) => {
+    setClients((prev) => prev.filter((c) => c.id !== clientId));
+    removeClient(clientId, user?.uid);
+  };
+
+  const handleToggleArchiveClient = (clientId: string) => {
+    setClients((prev) =>
+      prev.map((c) => {
+        if (c.id === clientId) {
+          const updated = { ...c, archived: !c.archived };
+          persistClient(updated, user?.uid);
+          return updated;
+        }
+        return c;
+      })
+    );
   };
 
   const handleAddService = (newService: ServiceItem) => {
@@ -285,6 +311,9 @@ function MainApp() {
             <ClientesView
               clients={clients}
               onOpenNewClient={() => setNewClientOpen(true)}
+              onUpdateClient={handleUpdateClient}
+              onDeleteClient={handleDeleteClient}
+              onToggleArchiveClient={handleToggleArchiveClient}
             />
           )}
 

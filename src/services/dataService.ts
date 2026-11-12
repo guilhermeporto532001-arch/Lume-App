@@ -110,6 +110,7 @@ export function subscribeToUserData(
               notes: data.notes,
               lastVisit: data.lastVisit,
               createdAt: data.createdAt,
+              archived: data.archived || false,
             });
           });
           if (list.length > 0 || !snap.metadata.hasPendingWrites) {
@@ -320,6 +321,16 @@ export async function persistClient(client: Client, userId?: string | null) {
       });
     } catch (e) {
       console.warn('Error saving client to Firestore:', e);
+    }
+  }
+}
+
+export async function removeClient(clientId: string, userId?: string | null) {
+  if (auth.currentUser && userId) {
+    try {
+      await deleteDoc(doc(db, 'clients', clientId));
+    } catch (e) {
+      console.warn('Error deleting client from Firestore:', e);
     }
   }
 }

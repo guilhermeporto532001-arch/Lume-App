@@ -10,6 +10,7 @@ export interface Client {
   notes?: string;
   lastVisit?: string;
   createdAt?: string;
+  archived?: boolean;
 }
 
 export interface Appointment {
