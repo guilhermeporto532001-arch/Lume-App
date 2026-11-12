@@ -3,16 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { TabType, Client, Appointment, ServiceItem, ProductItem, Transaction } from './types';
 import {
-  initialClients,
-  initialAppointments,
-  initialServices,
-  initialProducts,
-  initialTransactions,
-} from './data/mockData';
+  loadInitialData,
+  subscribeToUserData,
+  syncLocalDataToFirestoreIfEmpty,
+  saveToLocalStorage,
+  persistClient,
+  persistAppointment,
+  persistAppointmentStatus,
+  persistService,
+  persistProduct,
+  persistProductStock,
+  persistTransaction,
+  removeTransaction,
+} from './services/dataService';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { AuthModal } from './components/AuthModal';
@@ -52,16 +59,64 @@ function MainApp() {
     }
   };
 
-  // Core Data States
-  const [clients, setClients] = useState<Client[]>(initialClients);
-  const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments);
-  const [services, setServices] = useState<ServiceItem[]>(initialServices);
-  const [products, setProducts] = useState<ProductItem[]>(initialProducts);
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  // Core Data States with offline/local persistence
+  const [initialData] = useState(() => loadInitialData());
+  const [clients, setClients] = useState<Client[]>(initialData.clients);
+  const [appointments, setAppointments] = useState<Appointment[]>(initialData.appointments);
+  const [services, setServices] = useState<ServiceItem[]>(initialData.services);
+  const [products, setProducts] = useState<ProductItem[]>(initialData.products);
+  const [transactions, setTransactions] = useState<Transaction[]>(initialData.transactions);
 
-  // Handlers
+  // Keep local storage up to date on changes
+  useEffect(() => {
+    saveToLocalStorage('lume_data_clients', clients);
+  }, [clients]);
+
+  useEffect(() => {
+    saveToLocalStorage('lume_data_appointments', appointments);
+  }, [appointments]);
+
+  useEffect(() => {
+    saveToLocalStorage('lume_data_services', services);
+  }, [services]);
+
+  useEffect(() => {
+    saveToLocalStorage('lume_data_products', products);
+  }, [products]);
+
+  useEffect(() => {
+    saveToLocalStorage('lume_data_transactions', transactions);
+  }, [transactions]);
+
+  // Real-time Firestore synchronization when logged in
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    // Listen to real-time changes from Firestore database
+    const unsubscribe = subscribeToUserData(user.uid, (data) => {
+      if (data.clients) setClients(data.clients);
+      if (data.appointments) setAppointments(data.appointments);
+      if (data.services) setServices(data.services);
+      if (data.products) setProducts(data.products);
+      if (data.transactions) setTransactions(data.transactions);
+    });
+
+    // Sync any existing initial data to Firestore if the user cloud collection is currently blank
+    syncLocalDataToFirestoreIfEmpty(user.uid, {
+      clients,
+      appointments,
+      services,
+      products,
+      transactions,
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Handlers with Firestore persistence
   const handleAddAppointment = (newApt: Appointment) => {
     setAppointments((prev) => [newApt, ...prev]);
+    persistAppointment(newApt, user?.uid);
 
     // Only register in transactions if not canceled
     if (newApt.status !== 'cancelado') {
@@ -75,33 +130,40 @@ function MainApp() {
         paymentMethod: 'Pix',
       };
       setTransactions((prev) => [newTx, ...prev]);
+      persistTransaction(newTx, user?.uid);
     }
   };
 
   const handleAddClient = (newClient: Client) => {
     setClients((prev) => [newClient, ...prev]);
+    persistClient(newClient, user?.uid);
   };
 
   const handleAddService = (newService: ServiceItem) => {
     setServices((prev) => [...prev, newService]);
+    persistService(newService, user?.uid);
   };
 
   const handleAddProduct = (newProduct: ProductItem) => {
     setProducts((prev) => [...prev, newProduct]);
+    persistProduct(newProduct, user?.uid);
   };
 
   const handleAddTransaction = (newTx: Transaction) => {
     setTransactions((prev) => [newTx, ...prev]);
+    persistTransaction(newTx, user?.uid);
   };
 
   const handleUpdateAppointmentStatus = (id: string, status: Appointment['status']) => {
     setAppointments((prev) =>
       prev.map((apt) => (apt.id === id ? { ...apt, status } : apt))
     );
+    persistAppointmentStatus(id, status, user?.uid);
 
     // Synchronize transactions: remove if canceled, restore if confirmed/concluded
     if (status === 'cancelado') {
       setTransactions((prev) => prev.filter((tx) => tx.id !== `tx-apt-${id}`));
+      removeTransaction(`tx-apt-${id}`, user?.uid);
     } else {
       setTransactions((prev) => {
         const exists = prev.some((tx) => tx.id === `tx-apt-${id}`);
@@ -117,6 +179,7 @@ function MainApp() {
               category: 'Procedimento Facial',
               paymentMethod: 'Pix',
             };
+            persistTransaction(restoredTx, user?.uid);
             return [restoredTx, ...prev];
           }
         }
@@ -127,13 +190,18 @@ function MainApp() {
 
   const handleUpdateStock = (id: string, delta: number) => {
     setProducts((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, stock: Math.max(0, p.stock + delta) } : p
-      )
+      prev.map((p) => {
+        if (p.id === id) {
+          const newStock = Math.max(0, p.stock + delta);
+          persistProductStock(id, newStock, user?.uid);
+          return { ...p, stock: newStock };
+        }
+        return p;
+      })
     );
   };
 
-  const handleSelectServiceForAppointment = (serviceId: string) => {
+  const handleSelectServiceForAppointment = (_serviceId: string) => {
     setNewAppointmentOpen(true);
   };
 
@@ -141,21 +209,36 @@ function MainApp() {
     setServices((prev) =>
       prev.map((s) => (s.id === updatedService.id ? updatedService : s))
     );
+    persistService(updatedService, user?.uid);
   };
 
   const handleUpdateServicePostCare = (serviceId: string, postCare: string, imageUrl?: string) => {
     setServices((prev) =>
-      prev.map((s) =>
-        s.id === serviceId
-          ? { ...s, postCareInstructions: postCare, postCareImageUrl: imageUrl !== undefined ? imageUrl : s.postCareImageUrl }
-          : s
-      )
+      prev.map((s) => {
+        if (s.id === serviceId) {
+          const updated = {
+            ...s,
+            postCareInstructions: postCare,
+            postCareImageUrl: imageUrl !== undefined ? imageUrl : s.postCareImageUrl,
+          };
+          persistService(updated, user?.uid);
+          return updated;
+        }
+        return s;
+      })
     );
   };
 
   const handleUpdateClientPhone = (clientId: string, phone: string) => {
     setClients((prev) =>
-      prev.map((c) => (c.id === clientId ? { ...c, phone } : c))
+      prev.map((c) => {
+        if (c.id === clientId) {
+          const updated = { ...c, phone };
+          persistClient(updated, user?.uid);
+          return updated;
+        }
+        return c;
+      })
     );
   };
 

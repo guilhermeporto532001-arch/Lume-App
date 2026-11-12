@@ -78,8 +78,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </span>
           </button>
         ) : (
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF4F2] text-xs text-[#7E6963]">
-            <Sparkles className="w-3.5 h-3.5 text-[#9E4B52]" />
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF4F2] text-xs text-[#7E6963] border border-[#F0E6E1]" title="Banco de dados sincronizado">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span className="font-medium truncate max-w-[120px]">
               {user.displayName || user.email?.split('@')[0]}
             </span>
