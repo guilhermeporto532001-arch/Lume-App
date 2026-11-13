@@ -33,13 +33,6 @@ interface PostCareWhatsAppModalProps {
   onUpdateServicePostCare?: (serviceId: string, postCare: string, imageUrl?: string) => void;
 }
 
-const DEFAULT_POST_CARE = `• Evite exposição solar direta nas próximas 48 horas.
-• Aplique protetor solar FPS 50+ a cada 3 horas, mesmo em ambientes fechados.
-• Lave o rosto delicadamente com água morna/fria e sabonete neutro indicado.
-• Mantenha a pele hidratada com água termal ou hidratante calmante.
-• Evite maquiagem pesada e exercícios físicos intensos no dia de hoje.
-• Não cutuque, puxe pelinhas ou esprema a região tratada.`;
-
 export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
   isOpen,
   onClose,
@@ -97,7 +90,7 @@ export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
       const initialPhone = client?.phone || '';
       setPhone(initialPhone);
 
-      const instructions = service?.postCareInstructions?.trim() || DEFAULT_POST_CARE;
+      const instructions = service?.postCareInstructions?.trim() || '';
       setPostCareText(instructions);
 
       setImageUrl(service?.postCareImageUrl || null);
@@ -116,16 +109,16 @@ export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
   const clientFirstName = appointment.clientName.trim().split(' ')[0] || 'Cliente';
   const serviceName = appointment.serviceName;
 
-  // Format the full message that will be sent via WhatsApp
+  // Optional custom note if the user explicitly wrote one for this service/message
+  const optionalNoteBlock = postCareText.trim() ? `\n\n${postCareText.trim()}` : '';
+
+  // Format the full message that will be sent via WhatsApp (without the long care list, sent via flyer)
   const fullMessage = `Olá, ${clientFirstName}! ✨
 Aqui é da *Lume - Estética Facial*. Foi um prazer imenso cuidar de você hoje! 🌸
 
-Para garantir a máxima eficácia e luminosidade do seu procedimento (*${serviceName}*), preparamos suas orientações de cuidados pós-atendimento:
+Para garantir a máxima eficácia e luminosidade do seu procedimento (*${serviceName}*), estou te enviando o panfleto com todas as orientações de cuidados pós-atendimento.${optionalNoteBlock}
 
-📋 *CUIDADOS PÓS-PROCEDIMENTO:*
-${postCareText}
-
-✨ Lembre-se: o resultado perfeito depende 50% da cabine e 50% dos seus cuidados home care!
+✨ Lembre-se: o resultado perfeito depende 50% do procedimento feito aqui no estúdio e 50% dos seus cuidados em casa!
 
 Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenha um dia iluminado! 💖`;
 
@@ -297,7 +290,7 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
   };
 
   const handleSaveAsDefault = () => {
-    if (service?.id && onUpdateServicePostCare && postCareText.trim()) {
+    if (service?.id && onUpdateServicePostCare) {
       onUpdateServicePostCare(service.id, postCareText.trim(), imageUrl || '');
       setSavedAsDefault(true);
       setTimeout(() => setSavedAsDefault(false), 3000);
@@ -396,10 +389,10 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
             {isEditing ? (
               <div className="space-y-3">
                 <textarea
-                  rows={5}
+                  rows={4}
                   value={postCareText}
                   onChange={(e) => setPostCareText(e.target.value)}
-                  placeholder="Orientações e cuidados pós-procedimento..."
+                  placeholder="Mensagem adicional opcional (deixe vazio se os cuidados forem apenas no panfleto em imagem)..."
                   className="w-full p-3 text-xs rounded-2xl border border-[#E4D7D2] focus:border-[#9E4B52] outline-hidden text-[#423533] bg-white leading-relaxed font-sans"
                 />
 
