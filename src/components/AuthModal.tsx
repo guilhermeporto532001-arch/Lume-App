@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Mail, Lock, User as UserIcon, AlertCircle, ArrowRight, Check, ExternalLink, ShieldCheck } from 'lucide-react';
+import { X, Sparkles, Mail, Lock, User as UserIcon, AlertCircle, ArrowRight, Check, ExternalLink, ShieldCheck, Copy } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -9,8 +10,8 @@ interface AuthModalProps {
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const {
-    user,
     error,
+    errorCode,
     clearError,
     loginWithGoogle,
     loginWithEmail,
@@ -24,6 +25,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showFirebaseInfo, setShowFirebaseInfo] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isUnauthorizedDomain =
+    errorCode === 'auth/unauthorized-domain' ||
+    (error?.includes('auth/unauthorized-domain') ?? false);
+
+  const handleCopyDomain = async () => {
+    if (!currentHostname) return;
+    try {
+      await navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    } catch {
+      // Fallback ignored
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,9 +145,58 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         {/* Form Body */}
         <div className="p-6 space-y-4">
           {error && (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="font-semibold leading-snug">{error}</span>
+              </div>
+
+              {isUnauthorizedDomain && currentHostname && (
+                <div className="pl-6 space-y-2 text-[11px] text-rose-800/90">
+                  <p className="leading-relaxed">
+                    Para liberar o Login com Google neste endereço, adicione o domínio abaixo no Console do Firebase:
+                  </p>
+
+                  <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-white border border-rose-200">
+                    <code className="font-mono text-[11px] font-semibold text-[#423533] truncate">
+                      {currentHostname}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={handleCopyDomain}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 font-semibold text-[10px] shrink-0 transition-colors cursor-pointer"
+                    >
+                      {copiedDomain ? (
+                        <>
+                          <Check className="w-3 h-3" />
+                          <span>Copiado</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>Copiar</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
+                    <li>Abra as configurações de Autenticação do Firebase.</li>
+                    <li>Vá na aba <strong>Domínios autorizados</strong> e clique em <strong>Adicionar domínio</strong>.</li>
+                    <li>Cole <strong>{currentHostname}</strong> e salve.</li>
+                  </ol>
+
+                  <a
+                    href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-bold text-[#9E4B52] hover:underline pt-0.5"
+                  >
+                    <span>Abrir Domínios Autorizados no Firebase</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
             </div>
           )}
 

@@ -31,6 +31,7 @@ interface AuthContextType {
   isGuest: boolean;
   loading: boolean;
   error: string | null;
+  errorCode: string | null;
   clearError: () => void;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
@@ -46,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -73,7 +75,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, []);
 
-  const clearError = () => setError(null);
+  const clearError = () => {
+    setError(null);
+    setErrorCode(null);
+  };
+
+  const extractErrorCode = (err: unknown): string | null => {
+    if (typeof err === 'object' && err !== null && 'code' in err) {
+      return String((err as { code: string }).code);
+    }
+    return null;
+  };
 
   const translateAuthError = (err: unknown): string => {
     if (typeof err === 'object' && err !== null && 'code' in err) {
@@ -91,6 +103,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return 'Endereço de e-mail inválido.';
         case 'auth/popup-closed-by-user':
           return 'Janela de login com Google foi fechada antes de concluir.';
+        case 'auth/popup-blocked':
+          return 'O navegador bloqueou a janela do Google. Permita pop-ups para este site ou entre com e-mail e senha.';
+        case 'auth/cancelled-popup-request':
+          return 'Solicitação de login cancelada. Tente novamente.';
+        case 'auth/network-request-failed':
+          return 'Erro de conexão. Verifique sua internet e tente novamente.';
+        case 'auth/unauthorized-domain':
+          return 'Este domínio ainda não está autorizado para Login com Google no Firebase.';
         default:
           return (err as { message?: string }).message || 'Ocorreu um erro na autenticação.';
       }
@@ -100,12 +120,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginWithGoogle = async () => {
     try {
-      setError(null);
+      clearError();
       localStorage.removeItem('lume_local_session');
       const res = await signInWithPopup(auth, googleProvider);
       setUser(res.user);
       setIsGuest(false);
     } catch (err: unknown) {
+      setErrorCode(extractErrorCode(err));
       setError(translateAuthError(err));
       throw err;
     }
@@ -173,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
+      setErrorCode(extractErrorCode(err));
       setError(translateAuthError(err));
       throw err;
     }
@@ -237,6 +259,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      setErrorCode(extractErrorCode(err));
       setError(translateAuthError(err));
       throw err;
     }
@@ -266,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isGuest,
         loading,
         error,
+        errorCode,
         clearError,
         loginWithGoogle,
         loginWithEmail,
