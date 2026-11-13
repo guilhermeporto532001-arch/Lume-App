@@ -116,7 +116,7 @@ export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
   const fullMessage = `Olá, ${clientFirstName}! ✨
 Aqui é da *Lume - Estética Facial*. Foi um prazer imenso cuidar de você hoje! 🌸
 
-Para garantir a máxima eficácia e luminosidade do seu procedimento (*${serviceName}*), estou te enviando o panfleto com todas as orientações de cuidados pós-atendimento.${optionalNoteBlock}
+Para garantir a máxima eficácia e luminosidade do procedimento ${serviceName.trim()}, estou te enviando o panfleto com todas as orientações de cuidados pós-atendimento.${optionalNoteBlock}
 
 ✨ Lembre-se: o resultado perfeito depende 50% do procedimento feito aqui no estúdio e 50% dos seus cuidados em casa!
 
