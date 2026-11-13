@@ -21,6 +21,7 @@ import {
   removeTransaction,
   removeClient,
   removeAppointment,
+  removeService,
 } from './services/dataService';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
@@ -247,6 +248,24 @@ function MainApp() {
     persistService(updatedService, user?.uid);
   };
 
+  const handleDeleteService = (serviceId: string) => {
+    setServices((prev) => prev.filter((s) => s.id !== serviceId));
+    removeService(serviceId, user?.uid);
+  };
+
+  const handleToggleArchiveService = (serviceId: string) => {
+    setServices((prev) =>
+      prev.map((s) => {
+        if (s.id === serviceId) {
+          const updated = { ...s, archived: !s.archived };
+          persistService(updated, user?.uid);
+          return updated;
+        }
+        return s;
+      })
+    );
+  };
+
   const handleUpdateServicePostCare = (serviceId: string, postCare: string, imageUrl?: string) => {
     setServices((prev) =>
       prev.map((s) => {
@@ -366,6 +385,8 @@ function MainApp() {
               onAddService={handleAddService}
               onSelectForAppointment={handleSelectServiceForAppointment}
               onUpdateService={handleUpdateService}
+              onDeleteService={handleDeleteService}
+              onToggleArchiveService={handleToggleArchiveService}
             />
           )}
         </main>
@@ -383,8 +404,8 @@ function MainApp() {
         <NewAppointmentModal
           isOpen={newAppointmentOpen}
           onClose={() => setNewAppointmentOpen(false)}
-          clients={clients}
-          services={services}
+          clients={clients.filter((c) => !c.archived)}
+          services={services.filter((s) => !s.archived)}
           onAddAppointment={handleAddAppointment}
         />
       )}

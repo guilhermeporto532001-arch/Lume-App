@@ -15,6 +15,8 @@ import {
   Image as ImageIcon,
   UploadCloud,
   Trash2,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { ServiceItem } from '../types';
 import { compressImageFile } from '../utils/imageHelper';
@@ -24,6 +26,8 @@ interface ServicosViewProps {
   onAddService: (service: ServiceItem) => void;
   onSelectForAppointment: (serviceId: string) => void;
   onUpdateService?: (service: ServiceItem) => void;
+  onDeleteService?: (serviceId: string) => void;
+  onToggleArchiveService?: (serviceId: string) => void;
 }
 
 export const ServicosView: React.FC<ServicosViewProps> = ({
@@ -31,10 +35,14 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
   onAddService,
   onSelectForAppointment,
   onUpdateService,
+  onDeleteService,
+  onToggleArchiveService,
 }) => {
+  const [statusFilter, setStatusFilter] = useState<'ativos' | 'arquivados' | 'todos'>('ativos');
   const [filterType, setFilterType] = useState<'todos' | 'avulsos' | 'pacotes'>('todos');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPackageModal, setShowPackageModal] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<ServiceItem | null>(null);
 
   // Single Service Form
   const [name, setName] = useState('');
@@ -78,10 +86,21 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
     }
   };
 
-  const individualServices = services.filter((s) => !s.isPackage);
-  const packageServices = services.filter((s) => s.isPackage);
+  const activeServices = services.filter((s) => !s.archived);
+  const archivedServices = services.filter((s) => Boolean(s.archived));
+  const individualServices = activeServices.filter((s) => !s.isPackage);
 
-  const filtered = services.filter((srv) => {
+  const servicesInStatus =
+    statusFilter === 'ativos'
+      ? activeServices
+      : statusFilter === 'arquivados'
+      ? archivedServices
+      : services;
+
+  const individualInStatusCount = servicesInStatus.filter((s) => !s.isPackage).length;
+  const packageInStatusCount = servicesInStatus.filter((s) => s.isPackage).length;
+
+  const filtered = servicesInStatus.filter((srv) => {
     if (filterType === 'avulsos') return !srv.isPackage;
     if (filterType === 'pacotes') return srv.isPackage;
     return true;
@@ -275,25 +294,87 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFE5E0] shadow-2xs w-fit">
-        {[
-          { id: 'todos', label: `Todos (${services.length})` },
-          { id: 'avulsos', label: `Procedimentos Avulsos (${individualServices.length})` },
-          { id: 'pacotes', label: `Pacotes & Combos (${packageServices.length})` },
-        ].map((tab) => (
+      {/* Filter tabs: Status (Ativos / Arquivados / Todos) & Type */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Status Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFE5E0] shadow-2xs w-fit">
           <button
-            key={tab.id}
-            onClick={() => setFilterType(tab.id as any)}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-              filterType === tab.id
-                ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB]'
+            type="button"
+            onClick={() => setStatusFilter('ativos')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              statusFilter === 'ativos'
+                ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB] shadow-2xs'
                 : 'text-[#7E6963] hover:text-[#423533] hover:bg-[#FAF5F2]'
             }`}
           >
-            {tab.label}
+            <span>Ativos</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                statusFilter === 'ativos'
+                  ? 'bg-[#9E4B52] text-white'
+                  : 'bg-[#F4EBE6] text-[#7E6963]'
+              }`}
+            >
+              {activeServices.length}
+            </span>
           </button>
-        ))}
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('arquivados')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              statusFilter === 'arquivados'
+                ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB] shadow-2xs'
+                : 'text-[#7E6963] hover:text-[#423533] hover:bg-[#FAF5F2]'
+            }`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            <span>Arquivados</span>
+            <span
+              className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                statusFilter === 'arquivados'
+                  ? 'bg-[#9E4B52] text-white'
+                  : 'bg-[#F4EBE6] text-[#7E6963]'
+              }`}
+            >
+              {archivedServices.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStatusFilter('todos')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              statusFilter === 'todos'
+                ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB] shadow-2xs'
+                : 'text-[#7E6963] hover:text-[#423533] hover:bg-[#FAF5F2]'
+            }`}
+          >
+            Todos ({services.length})
+          </button>
+        </div>
+
+        {/* Category Type Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFE5E0] shadow-2xs w-fit overflow-x-auto">
+          {[
+            { id: 'todos', label: `Todos (${servicesInStatus.length})` },
+            { id: 'avulsos', label: `Procedimentos Avulsos (${individualInStatusCount})` },
+            { id: 'pacotes', label: `Pacotes & Combos (${packageInStatusCount})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setFilterType(tab.id as any)}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                filterType === tab.id
+                  ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB]'
+                  : 'text-[#7E6963] hover:text-[#423533] hover:bg-[#FAF5F2]'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Services Grid */}
@@ -316,15 +397,33 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
           </div>
         ) : filtered.length === 0 ? (
           <div className="col-span-full p-12 text-center bg-white rounded-3xl border border-[#EFE5E0]">
-            <p className="text-sm text-[#8C7B76]">Nenhum item encontrado nesta categoria.</p>
-            {filterType === 'pacotes' && individualServices.length >= 2 && (
+            <p className="text-sm text-[#8C7B76]">
+              {statusFilter === 'arquivados'
+                ? 'Nenhum procedimento arquivado encontrado.'
+                : 'Nenhum item encontrado nesta categoria.'}
+            </p>
+            {statusFilter === 'arquivados' ? (
               <button
-                onClick={() => setShowPackageModal(true)}
-                className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-[#9E4B52] text-white text-xs font-semibold rounded-xl"
+                type="button"
+                onClick={() => {
+                  setStatusFilter('ativos');
+                  setFilterType('todos');
+                }}
+                className="mt-3 text-xs font-semibold text-[#9E4B52] hover:underline cursor-pointer"
               >
-                <Layers className="w-4 h-4" />
-                <span>Criar Primeiro Pacote Combinado</span>
+                Ver procedimentos ativos
               </button>
+            ) : (
+              filterType === 'pacotes' &&
+              individualServices.length >= 2 && (
+                <button
+                  onClick={() => setShowPackageModal(true)}
+                  className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-[#9E4B52] text-white text-xs font-semibold rounded-xl"
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>Criar Primeiro Pacote Combinado</span>
+                </button>
+              )
             )}
           </div>
         ) : (
@@ -335,16 +434,18 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
               <div
                 key={srv.id}
                 className={`flex flex-col justify-between p-5 rounded-3xl bg-white border transition-all ${
-                  isPkg
+                  srv.archived
+                    ? 'border-stone-200 opacity-85 bg-stone-50/40'
+                    : isPkg
                     ? 'border-[#E8DDD7] shadow-xs bg-gradient-to-b from-[#FDF8F6] to-white ring-1 ring-[#F5D8DB]/60'
                     : 'border-[#EFE5E0] shadow-2xs hover:shadow-sm hover:border-[#E8DDD7]'
                 }`}
               >
                 <div>
-                  {/* Category and duration header */}
+                  {/* Category, duration and discreet actions header */}
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider truncate ${
                         isPkg
                           ? 'bg-[#FDF2F2] text-[#9E4B52] border border-[#F5D8DB]'
                           : 'bg-[#FAF4F2] text-[#7E6963] border border-[#EFE5E0]'
@@ -353,9 +454,50 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
                       {isPkg ? '✨ Pacote Combinado' : srv.category}
                     </span>
 
-                    <div className="flex items-center gap-1 text-xs text-[#8C7B76]">
-                      <Clock className="w-3.5 h-3.5 text-[#9E4B52]" />
-                      <span>{srv.durationMinutes} min</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 text-xs text-[#8C7B76]">
+                        <Clock className="w-3.5 h-3.5 text-[#9E4B52]" />
+                        <span>{srv.durationMinutes} min</span>
+                      </div>
+
+                      {/* Discreet Action Toolbar (matching ClientesView) */}
+                      {(onToggleArchiveService || onDeleteService) && (
+                        <div className="flex items-center gap-0.5 bg-[#FAF5F2] p-0.5 rounded-xl border border-[#EFE5E0]">
+                          {onToggleArchiveService && (
+                            <button
+                              type="button"
+                              onClick={() => onToggleArchiveService(srv.id)}
+                              title={
+                                srv.archived
+                                  ? 'Desarquivar procedimento'
+                                  : 'Arquivar procedimento'
+                              }
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                srv.archived
+                                  ? 'text-amber-600 hover:text-amber-800 hover:bg-white'
+                                  : 'text-stone-500 hover:text-stone-800 hover:bg-white'
+                              }`}
+                            >
+                              {srv.archived ? (
+                                <ArchiveRestore className="w-3.5 h-3.5" />
+                              ) : (
+                                <Archive className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
+
+                          {onDeleteService && (
+                            <button
+                              type="button"
+                              onClick={() => setServiceToDelete(srv)}
+                              title="Excluir procedimento permanentemente"
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -407,16 +549,23 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
                 </div>
 
                 {/* Price and Schedule CTA */}
-                <div className="pt-4 border-t border-[#F7EFEA] flex items-center justify-between">
-                  <div>
+                <div className="pt-4 border-t border-[#F7EFEA] flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     {isPkg && srv.originalPrice && srv.originalPrice > srv.price && (
                       <span className="text-[11px] text-[#A3928B] line-through block tabular-nums">
                         De R$ {srv.originalPrice.toFixed(2)}
                       </span>
                     )}
-                    <span className="text-[10px] text-[#A3928B] uppercase font-semibold">
-                      {isPkg ? 'Valor do Pacote' : 'Valor da sessão'}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-[#A3928B] uppercase font-semibold">
+                        {isPkg ? 'Valor do Pacote' : 'Valor da sessão'}
+                      </span>
+                      {srv.archived && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200">
+                          Arquivado
+                        </span>
+                      )}
+                    </div>
                     <p className="text-base font-extrabold text-[#423533] tabular-nums">
                       R$ {srv.price.toFixed(2)}
                     </p>
@@ -424,7 +573,7 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
 
                   <button
                     onClick={() => onSelectForAppointment(srv.id)}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#FDF2F2] hover:bg-[#FBE5E7] text-[#9E4B52] border border-[#F5D8DB] transition-colors"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-xl bg-[#FDF2F2] hover:bg-[#FBE5E7] text-[#9E4B52] border border-[#F5D8DB] transition-colors shrink-0"
                   >
                     <span>Agendar</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -1147,6 +1296,46 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
                   <span>Salvar Panfleto</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Confirmar Exclusão de Procedimento */}
+      {serviceToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm bg-white rounded-3xl p-6 shadow-xl border border-[#EFE5E0] text-center space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto text-rose-600">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#423533]">
+                {serviceToDelete.isPackage ? 'Excluir Pacote?' : 'Excluir Procedimento?'}
+              </h3>
+              <p className="text-xs text-[#8C7B76] mt-1.5 leading-relaxed">
+                Tem certeza que deseja excluir permanentemente{' '}
+                <strong className="text-[#423533]">{serviceToDelete.name}</strong> do catálogo?
+                Esta ação não remove agendamentos já registrados.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setServiceToDelete(null)}
+                className="flex-1 py-2.5 text-xs font-semibold text-[#7E6963] hover:bg-[#FAF5F2] rounded-xl border border-[#EFE5E0] transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteService?.(serviceToDelete.id);
+                  setServiceToDelete(null);
+                }}
+                className="flex-1 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                Sim, Excluir
+              </button>
             </div>
           </div>
         </div>

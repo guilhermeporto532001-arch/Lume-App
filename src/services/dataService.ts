@@ -175,6 +175,7 @@ export function subscribeToUserData(
               originalPrice: data.originalPrice,
               postCareInstructions: data.postCareInstructions,
               postCareImageUrl: data.postCareImageUrl,
+              archived: data.archived || false,
             });
           });
           if (list.length > 0 || !snap.metadata.hasPendingWrites) {
@@ -383,6 +384,16 @@ export async function persistService(service: ServiceItem, userId?: string | nul
       );
     } catch (e) {
       console.warn('Error saving service to Firestore:', e);
+    }
+  }
+}
+
+export async function removeService(serviceId: string, userId?: string | null) {
+  if (auth.currentUser && userId) {
+    try {
+      await deleteDoc(doc(db, 'services', serviceId));
+    } catch (e) {
+      console.warn('Error deleting service from Firestore:', e);
     }
   }
 }

@@ -39,6 +39,7 @@ export interface ServiceItem {
   originalPrice?: number;
   postCareInstructions?: string;
   postCareImageUrl?: string;
+  archived?: boolean;
 }
 
 export interface ProductItem {
