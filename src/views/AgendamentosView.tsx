@@ -548,7 +548,7 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
               c.name.toLowerCase() === postCareAppointment.clientName.toLowerCase()
           )}
           service={services.find(
-            (s) => s.name.toLowerCase() === postCareAppointment.serviceName.toLowerCase()
+            (s) => s.name.trim().toLowerCase() === postCareAppointment.serviceName.trim().toLowerCase()
           )}
           onUpdateClientPhone={onUpdateClientPhone}
           onUpdateServicePostCare={onUpdateServicePostCare}

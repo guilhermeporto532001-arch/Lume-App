@@ -254,7 +254,12 @@ function MainApp() {
           const updated = {
             ...s,
             postCareInstructions: postCare,
-            postCareImageUrl: imageUrl !== undefined ? imageUrl : s.postCareImageUrl,
+            postCareImageUrl:
+              imageUrl === ''
+                ? undefined
+                : imageUrl !== undefined
+                ? imageUrl
+                : s.postCareImageUrl,
           };
           persistService(updated, user?.uid);
           return updated;

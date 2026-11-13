@@ -17,6 +17,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Appointment, Client, ServiceItem } from '../types';
+import {
+  compressImageFile,
+  convertImageToPngBlob,
+  imageSrcToFile,
+} from '../utils/imageHelper';
 
 interface PostCareWhatsAppModalProps {
   isOpen: boolean;
@@ -51,27 +56,61 @@ export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
   const [copiedImage, setCopiedImage] = useState(false);
   const [savedAsDefault, setSavedAsDefault] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [canShareFiles, setCanShareFiles] = useState(false);
+  const [cachedPngBlob, setCachedPngBlob] = useState<Blob | null>(null);
+
+  useEffect(() => {
+    // Check if device/browser supports sharing image files directly (Android/iOS/Edge/Safari)
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof navigator.canShare === 'function') {
+        const testFile = new File([''], 'test.png', { type: 'image/png' });
+        setCanShareFiles(navigator.canShare({ files: [testFile] }));
+      } else {
+        setCanShareFiles(false);
+      }
+    } catch {
+      setCanShareFiles(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    if (!imageUrl) {
+      setCachedPngBlob(null);
+      return;
+    }
+    convertImageToPngBlob(imageUrl)
+      .then((blob) => {
+        if (active) setCachedPngBlob(blob);
+      })
+      .catch(() => {
+        if (active) setCachedPngBlob(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [imageUrl]);
 
   useEffect(() => {
     if (appointment) {
-      // 1. Determine phone
       const initialPhone = client?.phone || '';
       setPhone(initialPhone);
 
-      // 2. Determine post care text from service or default
       const instructions = service?.postCareInstructions?.trim() || DEFAULT_POST_CARE;
       setPostCareText(instructions);
 
-      // 3. Determine image from service
       setImageUrl(service?.postCareImageUrl || null);
 
       setSavedAsDefault(false);
       setCopiedText(false);
       setCopiedImage(false);
       setIsEditing(false);
+      setFeedback(null);
     }
   }, [appointment, client, service]);
 
+  // Keep early return after all hooks for React 19 safety
   if (!isOpen || !appointment) return null;
 
   const clientFirstName = appointment.clientName.trim().split(' ')[0] || 'Cliente';
@@ -90,84 +129,176 @@ ${postCareText}
 
 Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenha um dia iluminado! 💖`;
 
-  // Clean phone number for WhatsApp link (keeping international code)
   const getCleanPhone = (rawPhone: string) => {
     const digits = rawPhone.replace(/\D/g, '');
     if (!digits) return '';
-    // If 10 or 11 digits (Brazilian DDD + phone), prepend 55
     if (digits.length === 10 || digits.length === 11) {
       return `55${digits}`;
     }
     return digits;
   };
 
-  const handleImageFileChange = (file: File) => {
+  const handleImageFileChange = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecione uma imagem válida (PNG, JPG, WEBP).');
+      setFeedback({ type: 'error', text: 'Selecione uma imagem válida (PNG, JPG ou WEBP).' });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setImageUrl(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSendWhatsApp = () => {
-    const cleanPhone = getCleanPhone(phone);
-    if (!cleanPhone) {
-      alert('Por favor, informe um número de telefone com DDD para enviar no WhatsApp.');
-      return;
+    try {
+      const compressed = await compressImageFile(file, 1080, 0.85);
+      setImageUrl(compressed);
+      setFeedback(null);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImageUrl(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
     }
-
-    // Save phone to client profile if client has an id and phone changed
-    if (client?.id && phone.trim() && phone.trim() !== client.phone && onUpdateClientPhone) {
-      onUpdateClientPhone(client.id, phone.trim());
-    }
-
-    const encodedText = encodeURIComponent(fullMessage);
-    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
-    window.open(whatsappUrl, '_blank');
-  };
-
-  const handleCopyText = () => {
-    navigator.clipboard.writeText(fullMessage);
-    setCopiedText(true);
-    setTimeout(() => setCopiedText(false), 2500);
   };
 
   const handleDownloadImage = () => {
     if (!imageUrl) return;
     const link = document.createElement('a');
     link.href = imageUrl;
-    link.download = `panfleto_pos_${serviceName.toLowerCase().replace(/\s+/g, '_')}.png`;
+    link.download = `panfleto_pos_${serviceName.toLowerCase().replace(/\s+/g, '_')}.jpg`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleCopyImage = async () => {
-    if (!imageUrl) return;
+  // Convert any image (JPG/WEBP/PNG) to PNG Blob so ClipboardItem ALWAYS works!
+  const copyPngImageToClipboard = async (): Promise<boolean> => {
+    if (!imageUrl || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+      return false;
+    }
     try {
-      // Convert data URL to Blob
-      const res = await fetch(imageUrl);
-      const blob = await res.blob();
+      const pngBlob = cachedPngBlob || (await convertImageToPngBlob(imageUrl));
       await navigator.clipboard.write([
         new ClipboardItem({
-          [blob.type]: blob,
+          'image/png': pngBlob,
         }),
       ]);
       setCopiedImage(true);
-      setTimeout(() => setCopiedImage(false), 2500);
+      setTimeout(() => setCopiedImage(false), 3000);
+      return true;
     } catch {
-      // If direct image copy fails, fallback to download
+      return false;
+    }
+  };
+
+  const handleCopyImageButton = async () => {
+    const ok = await copyPngImageToClipboard();
+    if (ok) {
+      setFeedback({
+        type: 'success',
+        text: 'Imagem copiada! Agora abra a conversa no WhatsApp e aperte Ctrl+V (ou Colar) para enviar.',
+      });
+    } else {
       handleDownloadImage();
+      setFeedback({
+        type: 'info',
+        text: 'Este navegador bloqueou a cópia direta; baixamos a imagem para você anexar pelo clipe (📎) no WhatsApp.',
+      });
+    }
+  };
+
+  // Native Share (Mobile WhatsApp App: sends BOTH image file + text together!)
+  const handleShareNative = async () => {
+    if (!imageUrl) return;
+    try {
+      const safeName = serviceName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+      const file = cachedPngBlob
+        ? new File([cachedPngBlob], `panfleto_${safeName}.png`, { type: 'image/png' })
+        : await imageSrcToFile(imageUrl, `panfleto_${safeName}.png`);
+      // Copy text too as backup in case WhatsApp ignores text on some devices when sharing a file
+      try {
+        await navigator.clipboard.writeText(fullMessage);
+      } catch {
+        // Ignore clipboard errors
+      }
+      await navigator.share({
+        title: `Pós-Procedimento - ${serviceName}`,
+        text: fullMessage,
+        files: [file],
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      setFeedback({
+        type: 'info',
+        text: 'Use "Enviar no WhatsApp" + "Copiar Foto" ou "Baixar" para anexar a imagem.',
+      });
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    const cleanPhone = getCleanPhone(phone);
+    if (!cleanPhone) {
+      setFeedback({
+        type: 'error',
+        text: 'Informe um número de WhatsApp com DDD antes de enviar.',
+      });
+      return;
+    }
+
+    // Save phone to client profile if changed
+    if (client?.id && phone.trim() && phone.trim() !== client.phone && onUpdateClientPhone) {
+      onUpdateClientPhone(client.id, phone.trim());
+    }
+
+    // Trigger clipboard copy synchronously while document still has focus
+    if (imageUrl) {
+      const blobToCopy = cachedPngBlob;
+      if (blobToCopy && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        navigator.clipboard
+          .write([new ClipboardItem({ 'image/png': blobToCopy })])
+          .then(() => {
+            setCopiedImage(true);
+            setFeedback({
+              type: 'success',
+              text: 'WhatsApp aberto com o texto! A imagem também foi copiada: dentro da conversa, aperte Ctrl+V (ou Colar) para enviar a foto junto.',
+            });
+          })
+          .catch(() => {
+            handleDownloadImage();
+            setFeedback({
+              type: 'info',
+              text: 'WhatsApp aberto com o texto! Como links do WhatsApp não enviam anexos direto, baixamos o panfleto para você anexar na conversa.',
+            });
+          });
+      } else {
+        handleDownloadImage();
+        setFeedback({
+          type: 'info',
+          text: 'WhatsApp aberto com o texto! Baixamos o panfleto para você anexar pelo clipe (📎) na conversa.',
+        });
+      }
+    }
+
+    const encodedText = encodeURIComponent(fullMessage);
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`;
+
+    const link = document.createElement('a');
+    link.href = whatsappUrl;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCopyText = async () => {
+    try {
+      await navigator.clipboard.writeText(fullMessage);
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2500);
+    } catch {
+      setFeedback({ type: 'error', text: 'Não foi possível copiar o texto automaticamente.' });
     }
   };
 
   const handleSaveAsDefault = () => {
     if (service?.id && onUpdateServicePostCare && postCareText.trim()) {
-      onUpdateServicePostCare(service.id, postCareText.trim(), imageUrl || undefined);
+      onUpdateServicePostCare(service.id, postCareText.trim(), imageUrl || '');
       setSavedAsDefault(true);
       setTimeout(() => setSavedAsDefault(false), 3000);
     }
@@ -186,7 +317,7 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-[#423533]">Enviar Pós-Procedimento</h3>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  WhatsApp Oficial
+                  WhatsApp
                 </span>
               </div>
               <p className="text-xs text-[#8C7B76]">
@@ -195,6 +326,7 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
           >
@@ -204,6 +336,22 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
 
         {/* Content Body */}
         <div className="p-6 space-y-4 overflow-y-auto">
+          {/* Inline Feedback Alert */}
+          {feedback && (
+            <div
+              className={`flex items-start gap-2.5 p-3 rounded-2xl border text-xs leading-relaxed ${
+                feedback.type === 'success'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : feedback.type === 'error'
+                  ? 'bg-rose-50 border-rose-200 text-rose-900'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
+              }`}
+            >
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{feedback.text}</span>
+            </div>
+          )}
+
           {/* Client WhatsApp Phone input */}
           <div className="p-3.5 rounded-2xl bg-[#FAF5F2] border border-[#EFE5E0] space-y-2">
             <label className="block text-xs font-semibold text-[#544643] flex items-center justify-between">
@@ -213,7 +361,7 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
               </span>
               {client ? (
                 <span className="text-[10px] text-emerald-700 font-medium">
-                  {client.phone ? '✓ Telefone vinculado à ficha' : '⚠️ Telefone pendente na ficha'}
+                  {client.phone ? '✓ Telefone vinculado à ficha' : 'Telefone pendente na ficha'}
                 </span>
               ) : (
                 <span className="text-[10px] text-stone-500">Cliente avulsa</span>
@@ -233,18 +381,16 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#423533]">
                 <FileText className="w-4 h-4 text-[#9E4B52]" />
-                <span>Panfleto Digital de Cuidados ({appointment.serviceName})</span>
+                <span>Panfleto Digital ({appointment.serviceName})</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="text-xs font-semibold text-[#9E4B52] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>{isEditing ? 'Visualizar Mensagem' : 'Editar Conteúdo'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditing(!isEditing)}
+                className="text-xs font-semibold text-[#9E4B52] hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>{isEditing ? 'Visualizar Prévia' : 'Editar Conteúdo'}</span>
+              </button>
             </div>
 
             {isEditing ? (
@@ -316,26 +462,25 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
                   >
                     {savedAsDefault ? <Check className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    <span>{savedAsDefault ? 'Salvo como padrão do procedimento!' : 'Salvar como padrão deste procedimento (Texto + Imagem)'}</span>
+                    <span>{savedAsDefault ? 'Salvo como padrão do procedimento!' : 'Salvar como padrão deste procedimento'}</span>
                   </button>
                 )}
               </div>
             ) : (
               /* WhatsApp Preview Bubble */
-              <div className="p-4 rounded-2xl bg-[#EFEAE2] border border-[#E0D8CE] shadow-inner space-y-2 text-xs text-[#111B21]">
-                <div className="flex items-center justify-between text-[11px] text-[#54656F] border-b border-[#E0D8CE] pb-1.5 mb-1.5">
+              <div className="p-4 rounded-2xl bg-[#EFEAE2] border border-[#E0D8CE] shadow-inner space-y-2.5 text-xs text-[#111B21]">
+                <div className="flex items-center justify-between text-[11px] text-[#54656F] border-b border-[#E0D8CE] pb-1.5">
                   <span className="font-semibold text-emerald-800 flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
-                    Prévia da Mensagem no WhatsApp
+                    Prévia da Mensagem
                   </span>
                   <span>Lume · Estética Facial</span>
                 </div>
 
                 {/* WhatsApp Chat Card */}
                 <div className="bg-white rounded-2xl rounded-tl-xs shadow-xs overflow-hidden border border-black/5">
-                  {/* Attached Image if present */}
                   {imageUrl && (
-                    <div className="relative bg-[#FAF5F2] border-b border-[#F4EBE6] p-2 flex items-center justify-center group">
+                    <div className="relative bg-[#FAF5F2] border-b border-[#F4EBE6] p-2 flex items-center justify-center">
                       <img
                         src={imageUrl}
                         alt="Panfleto Anexado"
@@ -344,18 +489,18 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
                       <div className="absolute top-3 right-3 flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={handleCopyImage}
+                          onClick={handleCopyImageButton}
                           title="Copiar imagem para colar no WhatsApp (Ctrl+V)"
-                          className="flex items-center gap-1 px-2.5 py-1 bg-white/90 hover:bg-white text-[#423533] text-[10px] font-bold rounded-lg shadow-xs backdrop-blur-xs transition-colors cursor-pointer"
+                          className="flex items-center gap-1 px-2.5 py-1 bg-white/95 hover:bg-white text-[#423533] text-[10px] font-bold rounded-lg shadow-xs transition-colors cursor-pointer border border-[#EFE5E0]"
                         >
                           {copiedImage ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedImage ? 'Copiada!' : 'Copiar Imagem'}</span>
+                          <span>{copiedImage ? 'Copiada!' : 'Copiar Foto'}</span>
                         </button>
                         <button
                           type="button"
                           onClick={handleDownloadImage}
-                          title="Baixar imagem no computador/celular"
-                          className="p-1 bg-white/90 hover:bg-white text-[#423533] rounded-lg shadow-xs backdrop-blur-xs transition-colors cursor-pointer"
+                          title="Baixar imagem"
+                          className="p-1.5 bg-white/95 hover:bg-white text-[#423533] rounded-lg shadow-xs transition-colors cursor-pointer border border-[#EFE5E0]"
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
@@ -370,9 +515,9 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
                 </div>
 
                 {imageUrl && (
-                  <p className="text-[11px] text-stone-600 mt-1 flex items-center gap-1 font-medium">
-                    <span>💡 <strong>Dica:</strong> O texto abre preenchido no WhatsApp. A imagem pode ser colada com <code>Ctrl+V</code> ou enviada com 1 clique!</span>
-                  </p>
+                  <div className="p-2.5 rounded-xl bg-white/80 border border-[#E0D8CE] text-[11px] text-[#544643] leading-relaxed">
+                    <strong>Como funciona o envio da foto:</strong> links do WhatsApp só enviam o texto automaticamente. Por isso, ao clicar em <strong>Enviar no WhatsApp</strong>, copiamos a foto para você — dentro da conversa, basta apertar <strong>Ctrl + V</strong> (ou tocar em <strong>Colar</strong>) para enviar a imagem junto!
+                  </div>
                 )}
               </div>
             )}
@@ -380,38 +525,43 @@ Qualquer dúvida ou necessidade, estou totalmente à disposição por aqui. Tenh
         </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-[#FCF9F7] border-t border-[#F4EBE6] shrink-0">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-4 bg-[#FCF9F7] border-t border-[#F4EBE6] shrink-0">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={handleCopyText}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#675753] hover:text-[#423533] bg-white hover:bg-stone-100 rounded-xl border border-[#EFE5E0] transition-colors cursor-pointer"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#675753] hover:text-[#423533] bg-white hover:bg-stone-100 rounded-xl border border-[#EFE5E0] transition-colors cursor-pointer"
             >
-              {copiedText ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              {copiedText ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
               <span>{copiedText ? 'Texto Copiado!' : 'Copiar Texto'}</span>
             </button>
 
             {imageUrl && (
               <button
                 type="button"
-                onClick={handleCopyImage}
-                title="Copiar imagem para colar no WhatsApp"
-                className="flex items-center justify-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
+                onClick={handleCopyImageButton}
+                title="Copiar imagem PNG para colar no WhatsApp"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl border border-emerald-200 transition-colors cursor-pointer"
               >
-                {copiedImage ? <Check className="w-4 h-4 text-emerald-600" /> : <ImageIcon className="w-4 h-4" />}
-                <span>{copiedImage ? 'Imagem Copiada!' : 'Copiar Foto'}</span>
+                {copiedImage ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <ImageIcon className="w-3.5 h-3.5" />}
+                <span>{copiedImage ? 'Foto Copiada!' : 'Copiar Foto'}</span>
               </button>
             )}
           </div>
 
           <div className="w-full sm:w-auto flex items-center gap-2 justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold text-[#7E6963] hover:text-[#423533] cursor-pointer"
-            >
-              Fechar
-            </button>
+            {imageUrl && canShareFiles && (
+              <button
+                type="button"
+                onClick={handleShareNative}
+                title="Compartilhar foto e texto direto no app do WhatsApp (celular)"
+                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Enviar Foto + Texto</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleSendWhatsApp}

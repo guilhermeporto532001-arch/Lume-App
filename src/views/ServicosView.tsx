@@ -17,6 +17,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { ServiceItem } from '../types';
+import { compressImageFile } from '../utils/imageHelper';
 
 interface ServicosViewProps {
   services: ServiceItem[];
@@ -61,16 +62,20 @@ export const ServicosView: React.FC<ServicosViewProps> = ({
   const [editingPostCareText, setEditingPostCareText] = useState('');
   const [editingPostCareImageUrl, setEditingPostCareImageUrl] = useState<string | null>(null);
 
-  const handleImageFileChange = (file: File, setter: (val: string | null) => void) => {
+  const handleImageFileChange = async (file: File, setter: (val: string | null) => void) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecione uma imagem válida (PNG, JPG, WEBP).');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setter(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedDataUrl = await compressImageFile(file, 1080, 0.85);
+      setter(compressedDataUrl);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setter(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const individualServices = services.filter((s) => !s.isPackage);
