@@ -310,6 +310,7 @@ function MainApp() {
           {activeTab === 'clientes' && (
             <ClientesView
               clients={clients}
+              appointments={appointments}
               onOpenNewClient={() => setNewClientOpen(true)}
               onUpdateClient={handleUpdateClient}
               onDeleteClient={handleDeleteClient}

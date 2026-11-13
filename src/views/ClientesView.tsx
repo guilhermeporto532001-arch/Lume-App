@@ -13,12 +13,16 @@ import {
   Users,
   Check,
   X,
+  History,
 } from 'lucide-react';
-import { Client } from '../types';
+import { Appointment, Client } from '../types';
 import { EditClientModal } from '../components/EditClientModal';
+import { ClientHistoryModal } from '../components/ClientHistoryModal';
+import { parseAppointmentDate } from '../utils/monthArchive';
 
 interface ClientesViewProps {
   clients: Client[];
+  appointments: Appointment[];
   onOpenNewClient: () => void;
   onUpdateClient: (client: Client) => void;
   onDeleteClient: (clientId: string) => void;
@@ -27,6 +31,7 @@ interface ClientesViewProps {
 
 export const ClientesView: React.FC<ClientesViewProps> = ({
   clients,
+  appointments,
   onOpenNewClient,
   onUpdateClient,
   onDeleteClient,
@@ -39,6 +44,7 @@ export const ClientesView: React.FC<ClientesViewProps> = ({
   // Modal states
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
+  const [historyClient, setHistoryClient] = useState<Client | null>(null);
 
   // Counts
   const activeCount = clients.filter((c) => !c.archived).length;
@@ -240,6 +246,16 @@ export const ClientesView: React.FC<ClientesViewProps> = ({
 
                     {/* Discreet Action Toolbar */}
                     <div className="flex items-center gap-0.5 bg-[#FAF5F2] p-1 rounded-xl border border-[#EFE5E0]">
+                      {/* 0. Histórico de Atendimentos */}
+                      <button
+                        type="button"
+                        onClick={() => setHistoryClient(client)}
+                        title="Ver histórico de atendimentos"
+                        className="p-1.5 rounded-lg text-stone-500 hover:text-[#9E4B52] hover:bg-white transition-colors"
+                      >
+                        <History className="w-3.5 h-3.5" />
+                      </button>
+
                       {/* 1. Lápis discreto para editar cadastro */}
                       <button
                         type="button"
@@ -308,20 +324,57 @@ export const ClientesView: React.FC<ClientesViewProps> = ({
               </div>
 
               {/* Bottom footer */}
-              <div className="pt-4 mt-4 border-t border-[#F7EFEA] flex items-center justify-between text-[11px] text-[#A3928B]">
-                <span>Última visita: {client.lastVisit || 'Recente'}</span>
-                {client.archived ? (
-                  <span className="px-2 py-0.5 rounded-md font-semibold text-amber-700 bg-amber-50 border border-amber-200">
-                    Ficha Arquivada
-                  </span>
-                ) : (
-                  <span className="font-medium text-[#9E4B52]">Ficha ativa</span>
-                )}
-              </div>
+              {(() => {
+                const normalizedName = client.name.trim().toLowerCase();
+                const clientApts = appointments
+                  .filter(
+                    (apt) =>
+                      (apt.clientId && apt.clientId === client.id) ||
+                      apt.clientName.trim().toLowerCase() === normalizedName
+                  )
+                  .sort(
+                    (a, b) =>
+                      parseAppointmentDate(b.date).getTime() -
+                      parseAppointmentDate(a.date).getTime()
+                  );
+                const validCount = clientApts.filter((a) => a.status !== 'cancelado').length;
+                const latestDate = clientApts[0]?.date || client.lastVisit || 'Sem visitas';
+
+                return (
+                  <div className="pt-4 mt-4 border-t border-[#F7EFEA] flex items-center justify-between gap-2 text-[11px] text-[#A3928B]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">Última visita: {latestDate}</span>
+                      {client.archived && (
+                        <span className="px-2 py-0.5 rounded-md font-semibold text-amber-700 bg-amber-50 border border-amber-200 shrink-0">
+                          Arquivada
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryClient(client)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold text-[#9E4B52] bg-[#FDF2F2] hover:bg-[#FBE5E7] border border-[#F5D8DB] transition-colors shrink-0"
+                    >
+                      <History className="w-3 h-3" />
+                      <span>Histórico ({validCount})</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           ))
         )}
       </div>
+
+      {/* Client Appointment History Modal */}
+      {historyClient && (
+        <ClientHistoryModal
+          isOpen={Boolean(historyClient)}
+          onClose={() => setHistoryClient(null)}
+          client={historyClient}
+          appointments={appointments}
+        />
+      )}
 
       {/* Edit Client Modal */}
       {editingClient && (
