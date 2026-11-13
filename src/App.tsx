@@ -20,6 +20,7 @@ import {
   persistTransaction,
   removeTransaction,
   removeClient,
+  removeAppointment,
 } from './services/dataService';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
@@ -214,6 +215,14 @@ function MainApp() {
     }
   };
 
+  const handleDeleteAppointment = (id: string) => {
+    setAppointments((prev) => prev.filter((apt) => apt.id !== id));
+    removeAppointment(id, user?.uid);
+    // Also clean up linked transaction if present
+    setTransactions((prev) => prev.filter((tx) => tx.id !== `tx-apt-${id}`));
+    removeTransaction(`tx-apt-${id}`, user?.uid);
+  };
+
   const handleUpdateStock = (id: string, delta: number) => {
     setProducts((prev) =>
       prev.map((p) => {
@@ -325,6 +334,7 @@ function MainApp() {
               services={services}
               onOpenNewAppointment={() => setNewAppointmentOpen(true)}
               onUpdateStatus={handleUpdateAppointmentStatus}
+              onDeleteAppointment={handleDeleteAppointment}
               onUpdateClientPhone={handleUpdateClientPhone}
               onUpdateServicePostCare={handleUpdateServicePostCare}
             />

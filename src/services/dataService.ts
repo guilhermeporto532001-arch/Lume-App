@@ -363,6 +363,16 @@ export async function persistAppointmentStatus(
   }
 }
 
+export async function removeAppointment(appointmentId: string, userId?: string | null) {
+  if (auth.currentUser && userId) {
+    try {
+      await deleteDoc(doc(db, 'appointments', appointmentId));
+    } catch (e) {
+      console.warn('Error deleting appointment from Firestore:', e);
+    }
+  }
+}
+
 export async function persistService(service: ServiceItem, userId?: string | null) {
   if (auth.currentUser && userId) {
     try {

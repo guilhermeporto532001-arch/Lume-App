@@ -13,6 +13,7 @@ import {
   Ban,
   CalendarDays,
   MessageCircle,
+  X,
 } from 'lucide-react';
 import { Appointment, Client, ServiceItem } from '../types';
 import {
@@ -28,6 +29,7 @@ interface AgendamentosViewProps {
   services: ServiceItem[];
   onOpenNewAppointment: () => void;
   onUpdateStatus: (id: string, status: Appointment['status']) => void;
+  onDeleteAppointment: (id: string) => void;
   onUpdateClientPhone?: (clientId: string, phone: string) => void;
   onUpdateServicePostCare?: (serviceId: string, postCare: string, imageUrl?: string) => void;
 }
@@ -38,6 +40,7 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
   services,
   onOpenNewAppointment,
   onUpdateStatus,
+  onDeleteAppointment,
   onUpdateClientPhone,
   onUpdateServicePostCare,
 }) => {
@@ -51,6 +54,7 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
   // State for Post-care WhatsApp modal
   const [postCareAppointment, setPostCareAppointment] = useState<Appointment | null>(null);
   const [isPostCareModalOpen, setIsPostCareModalOpen] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<Appointment | null>(null);
 
   // Compute available months dynamically from appointments list + current month
   const availableMonths = useMemo(() => {
@@ -287,11 +291,6 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
             label: 'Cancelados',
             count: monthAppointments.filter((a) => a.status === 'cancelado').length,
           },
-          {
-            id: 'agendado',
-            label: 'Aguardando',
-            count: monthAppointments.filter((a) => a.status === 'agendado').length,
-          },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -499,20 +498,33 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
                       </button>
                     </div>
 
-                    {/* Dedicated WhatsApp Post-Care Trigger Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenPostCareModal(apt)}
-                      title="Enviar orientações de pós-procedimento direto no WhatsApp da cliente"
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
-                        isConcluido
-                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      }`}
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span className="whitespace-nowrap">Pós no WhatsApp</span>
-                    </button>
+                    {/* Dedicated WhatsApp Post-Care Trigger Button + Discreet Delete X */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPostCareModal(apt)}
+                        title="Enviar orientações de pós-procedimento direto no WhatsApp da cliente"
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs ${
+                          isConcluido
+                            ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                            : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        }`}
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span className="whitespace-nowrap">Pós no WhatsApp</span>
+                      </button>
+
+                      {/* Discreet Delete Button (only an X) */}
+                      <button
+                        type="button"
+                        onClick={() => setAppointmentToDelete(apt)}
+                        title="Excluir atendimento"
+                        aria-label="Excluir atendimento"
+                        className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -541,6 +553,44 @@ export const AgendamentosView: React.FC<AgendamentosViewProps> = ({
           onUpdateClientPhone={onUpdateClientPhone}
           onUpdateServicePostCare={onUpdateServicePostCare}
         />
+      )}
+
+      {/* Delete Appointment Confirmation Modal */}
+      {appointmentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs">
+          <div className="relative w-full max-w-sm bg-white rounded-3xl p-6 shadow-xl border border-[#EFE5E0] text-center space-y-4">
+            <div className="w-11 h-11 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center mx-auto text-rose-600">
+              <X className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[#423533]">Excluir Atendimento?</h3>
+              <p className="text-xs text-[#8C7B76] mt-1.5 leading-relaxed">
+                Deseja excluir permanentemente o atendimento de{' '}
+                <strong className="text-[#423533]">{appointmentToDelete.clientName}</strong> (
+                {appointmentToDelete.date} às {appointmentToDelete.time})?
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setAppointmentToDelete(null)}
+                className="flex-1 py-2.5 text-xs font-semibold text-[#7E6963] hover:bg-[#FAF5F2] rounded-xl border border-[#EFE5E0] transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteAppointment(appointmentToDelete.id);
+                  setAppointmentToDelete(null);
+                }}
+                className="flex-1 py-2.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all shadow-xs cursor-pointer"
+              >
+                Sim, Excluir
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
