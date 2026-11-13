@@ -114,7 +114,7 @@ export const PostCareWhatsAppModal: React.FC<PostCareWhatsAppModalProps> = ({
 
   // Format the full message that will be sent via WhatsApp (without the long care list, sent via flyer)
   const fullMessage = `Olá, ${clientFirstName}! ✨
-Aqui é da *Lume - Estética Facial*. Foi um prazer imenso cuidar de você hoje! 🌸
+Aqui é da Lume - Estética Facial. Foi um prazer imenso cuidar de você hoje! 🌸
 
 Para garantir a máxima eficácia e luminosidade do procedimento ${serviceName.trim()}, estou te enviando o panfleto com todas as orientações de cuidados pós-atendimento.${optionalNoteBlock}
 
